@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Scanner</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .scan-results {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .vulnerability-item {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #e74c3c;
+            background-color: #fff;
+        }
+        .vulnerability-item.high {
+            border-left-color: #e74c3c;
+        }
+        .vulnerability-item.medium {
+            border-left-color: #f39c12;
+        }
+        .vulnerability-item.low {
+            border-left-color: #3498db;
+        }
+        .scan-progress {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #eee;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #3498db;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Security Scanner</h1>
+        <div class="session-info">
+            <span>Session Timeout: </span>
+            <span id="sessionTimer">00:15</span>
+            <button id="logout">Logout</button>
+        </div>
+        <div class="scan-section">
+            <div class="input-group">
+                <input type="url" id="targetUrl" placeholder="Enter URL to scan" required>
+                <button id="startScan">Start Scan</button>
+            </div>
+            <div class="scan-progress" style="display: none;">
+                <h3>Scan Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill"></div>
+                </div>
+                <p id="scanStatus">Initializing scan...</p>
+            </div>
+            <div id="scanResults" class="scan-results" style="display: none;">
+                <h3>Scan Results</h3>
+                <div id="vulnerabilitiesList"></div>
+            </div>
+        </div>
+        <div id="status" class="status"></div>
+    </div>
+    <script>
+        // Check if access code exists, if not redirect to index
+        if (!sessionStorage.getItem('accessCode')) {
+            window.location.replace('index.html');
+        }
+
+        // Session management
+        let sessionTimeout = 15 * 1000; // 15 seconds
+        let sessionTimer = null;
+        let lastActivityTime = null;
+
+        // DOM Elements
+        const targetUrlInput = document.getElementById('targetUrl');
+        const startScanBtn = document.getElementById('startScan');
+        const scanProgress = document.querySelector('.scan-progress');
+        const progressBarFill = document.querySelector('.progress-bar-fill');
+        const scanStatus = document.getElementById('scanStatus');
+        const scanResults = document.getElementById('scanResults');
+        const vulnerabilitiesList = document.getElementById('vulnerabilitiesList');
+        const statusDiv = document.getElementById('status');
+        const sessionTimerDisplay = document.getElementById('sessionTimer');
+        const logoutBtn = document.getElementById('logout');
+
+        // Session Management Functions
+        function startSession() {
+            lastActivityTime = Date.now();
+            updateSessionTimer();
+            sessionTimer = setInterval(updateSessionTimer, 1000);
+            
+            document.addEventListener('mousemove', resetSessionTimer);
+            document.addEventListener('keypress', resetSessionTimer);
+            document.addEventListener('click', resetSessionTimer);
+        }
+
+        function resetSessionTimer() {
+            lastActivityTime = Date.now();
+        }
+
+        function updateSessionTimer() {
+            const timeLeft = Math.max(0, sessionTimeout - (Date.now() - lastActivityTime));
+            const minutes = Math.floor(timeLeft / 60000);
+            const seconds = Math.floor((timeLeft % 60000) / 1000);
+            sessionTimerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (timeLeft === 0) {
+                endSession();
+            }
+        }
+
+        function endSession() {
+            clearInterval(sessionTimer);
+            document.removeEventListener('mousemove', resetSessionTimer);
+            document.removeEventListener('keypress', resetSessionTimer);
+            document.removeEventListener('click', resetSessionTimer);
+            
+            sessionStorage.clear();
+            
+            showStatus('Session expired. Redirecting...', 'info');
+            
+            setTimeout(() => {
+                window.location.replace('index.html');
+            }, 1000);
+        }
+
+        // Security Scan Functions
+        async function startSecurityScan() {
+            const url = targetUrlInput.value.trim();
+            if (!url) {
+                showStatus('Please enter a valid URL', 'error');
+                return;
+            }
+
+            try {
+                // Show progress bar
+                scanProgress.style.display = 'block';
+                scanResults.style.display = 'none';
+                progressBarFill.style.width = '0%';
+                scanStatus.textContent = 'Initializing scan...';
+
+                // Simulate scan progress (replace with actual ZAP API calls)
+                await simulateScan(url);
+
+                // Show results
+                scanProgress.style.display = 'none';
+                scanResults.style.display = 'block';
+                showStatus('Scan completed successfully!', 'success');
+
+            } catch (error) {
+                showStatus('Error during scan: ' + error.message, 'error');
+                scanProgress.style.display = 'none';
+            }
+        }
+
+        async function simulateScan(url) {
+            // This is a simulation - replace with actual ZAP API integration
+            const steps = [
+                { progress: 20, status: 'Analyzing target...' },
+                { progress: 40, status: 'Checking for common vulnerabilities...' },
+                { progress: 60, status: 'Testing for XSS vulnerabilities...' },
+                { progress: 80, status: 'Checking for SQL injection...' },
+                { progress: 100, status: 'Scan complete!' }
+            ];
+
+            for (const step of steps) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                progressBarFill.style.width = `${step.progress}%`;
+                scanStatus.textContent = step.status;
+            }
+
+            // Simulate finding some vulnerabilities
+            const vulnerabilities = [
+                {
+                    severity: 'high',
+                    title: 'Cross-Site Scripting (XSS)',
+                    description: 'Potential XSS vulnerability found in form input',
+                    location: '/contact-form'
+                },
+                {
+                    severity: 'medium',
+                    title: 'Missing Security Headers',
+                    description: 'Some security headers are not properly configured',
+                    location: 'Global'
+                },
+                {
+                    severity: 'low',
+                    title: 'Outdated JavaScript Library',
+                    description: 'Using an outdated version of jQuery',
+                    location: '/js/jquery.min.js'
+                }
+            ];
+
+            displayVulnerabilities(vulnerabilities);
+        }
+
+        function displayVulnerabilities(vulnerabilities) {
+            vulnerabilitiesList.innerHTML = '';
+            vulnerabilities.forEach(vuln => {
+                const vulnElement = document.createElement('div');
+                vulnElement.className = `vulnerability-item ${vuln.severity}`;
+                vulnElement.innerHTML = `
+                    <h4>${vuln.title}</h4>
+                    <p><strong>Severity:</strong> ${vuln.severity.toUpperCase()}</p>
+                    <p><strong>Description:</strong> ${vuln.description}</p>
+                    <p><strong>Location:</strong> ${vuln.location}</p>
+                `;
+                vulnerabilitiesList.appendChild(vulnElement);
+            });
+        }
+
+        // Event Listeners
+        startScanBtn.addEventListener('click', startSecurityScan);
+        logoutBtn.addEventListener('click', endSession);
+
+        // Helper function to show status messages
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.style.color = type === 'error' ? '#e74c3c' : type === 'success' ? '#27ae60' : '#3498db';
+            setTimeout(() => {
+                statusDiv.textContent = '';
+            }, 3000);
+        }
+
+        // Initialize session
+        startSession();
+    </script>
+</body>
+</html> 

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Notes</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Secure Notes</h1>
+        <div class="session-info">
+            <span>Session Timeout: </span>
+            <span id="sessionTimer">00:15</span>
+            <button id="logout">Logout</button>
+        </div>
+        <div class="notes-section">
+            <textarea id="note" placeholder="Write your secure note here..."></textarea>
+            <div class="buttons">
+                <button id="saveEncrypted">Save Encrypted</button>
+                <button id="savePlain">Save Plain</button>
+                <button id="clearNote">Clear</button>
+            </div>
+        </div>
+        <div id="status" class="status"></div>
+    </div>
+    <script>
+        // Check if access code exists, if not redirect to index
+        if (!sessionStorage.getItem('accessCode')) {
+            window.location.replace('index.html');
+        }
+
+        // Session management
+        let sessionTimeout = 15 * 1000; // 15 seconds
+        let sessionTimer = null;
+        let lastActivityTime = null;
+        let encryptionKey = null;
+
+        // DOM Elements
+        const noteTextarea = document.getElementById('note');
+        const saveEncryptedBtn = document.getElementById('saveEncrypted');
+        const savePlainBtn = document.getElementById('savePlain');
+        const clearNoteBtn = document.getElementById('clearNote');
+        const statusDiv = document.getElementById('status');
+        const sessionTimerDisplay = document.getElementById('sessionTimer');
+        const logoutBtn = document.getElementById('logout');
+
+        // Encryption functions
+        async function generateKey(code) {
+            const encoder = new TextEncoder();
+            const codeBuffer = encoder.encode(code);
+            const salt = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+            
+            const keyMaterial = await window.crypto.subtle.importKey(
+                'raw',
+                codeBuffer,
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                true,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptData(text) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(text);
+            
+            // Generate a random IV
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            
+            // Encrypt the data
+            const encryptedContent = await window.crypto.subtle.encrypt(
+                {
+                    name: 'AES-GCM',
+                    iv: iv
+                },
+                encryptionKey,
+                data
+            );
+
+            // Combine IV and encrypted content
+            const encryptedArray = new Uint8Array(encryptedContent);
+            const result = new Uint8Array(iv.length + encryptedArray.length);
+            result.set(iv);
+            result.set(encryptedArray, iv.length);
+            
+            // Convert to base64 for storage
+            return btoa(String.fromCharCode.apply(null, result));
+        }
+
+        // Session Management
+        function startSession() {
+            lastActivityTime = Date.now();
+            updateSessionTimer();
+            sessionTimer = setInterval(updateSessionTimer, 1000);
+            
+            // Add activity listeners
+            document.addEventListener('mousemove', resetSessionTimer);
+            document.addEventListener('keypress', resetSessionTimer);
+            document.addEventListener('click', resetSessionTimer);
+        }
+
+        function resetSessionTimer() {
+            lastActivityTime = Date.now();
+        }
+
+        function updateSessionTimer() {
+            const timeLeft = Math.max(0, sessionTimeout - (Date.now() - lastActivityTime));
+            const minutes = Math.floor(timeLeft / 60000);
+            const seconds = Math.floor((timeLeft % 60000) / 1000);
+            sessionTimerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (timeLeft === 0) {
+                endSession();
+            }
+        }
+
+        function endSession() {
+            // Clear all intervals and listeners
+            clearInterval(sessionTimer);
+            document.removeEventListener('mousemove', resetSessionTimer);
+            document.removeEventListener('keypress', resetSessionTimer);
+            document.removeEventListener('click', resetSessionTimer);
+            
+            // Clear session data
+            sessionStorage.clear();
+            encryptionKey = null;
+            
+            // Show status message briefly before redirect
+            showStatus('Session expired. Redirecting...', 'info');
+            
+            // Redirect to index page after a short delay
+            setTimeout(() => {
+                window.location.replace('index.html');
+            }, 1000);
+        }
+
+        // Save functions
+        async function saveEncryptedNote() {
+            try {
+                const note = noteTextarea.value;
+                if (!note) {
+                    showStatus('Please enter a note to save', 'error');
+                    return;
+                }
+
+                // Encrypt the note content
+                const encryptedNote = await encryptData(note);
+
+                const options = {
+                    types: [{
+                        description: 'Encrypted Notes',
+                        accept: {
+                            'text/plain': ['.enc']
+                        }
+                    }]
+                };
+                
+                const fileHandle = await window.showSaveFilePicker(options);
+                const writable = await fileHandle.createWritable();
+                await writable.write(encryptedNote);
+                await writable.close();
+                
+                showStatus('Note encrypted and saved successfully!', 'success');
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    showStatus('Error saving encrypted note: ' + error.message, 'error');
+                }
+            }
+        }
+
+        async function savePlainNote() {
+            try {
+                const note = noteTextarea.value;
+                if (!note) {
+                    showStatus('Please enter a note to save', 'error');
+                    return;
+                }
+
+                const options = {
+                    types: [{
+                        description: 'Text Files',
+                        accept: {
+                            'text/plain': ['.txt']
+                        }
+                    }]
+                };
+                
+                const fileHandle = await window.showSaveFilePicker(options);
+                const writable = await fileHandle.createWritable();
+                await writable.write(note);
+                await writable.close();
+                
+                showStatus('Note saved successfully!', 'success');
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    showStatus('Error saving note: ' + error.message, 'error');
+                }
+            }
+        }
+
+        // Event Listeners
+        saveEncryptedBtn.addEventListener('click', saveEncryptedNote);
+        savePlainBtn.addEventListener('click', savePlainNote);
+
+        clearNoteBtn.addEventListener('click', () => {
+            noteTextarea.value = '';
+            showStatus('Note cleared', 'info');
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            endSession();
+        });
+
+        // Helper function to show status messages
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.style.color = type === 'error' ? '#e74c3c' : type === 'success' ? '#27ae60' : '#3498db';
+            setTimeout(() => {
+                statusDiv.textContent = '';
+            }, 3000);
+        }
+
+        // Initialize encryption and start session
+        async function initialize() {
+            try {
+                const accessCode = sessionStorage.getItem('accessCode');
+                if (accessCode) {
+                    encryptionKey = await generateKey(accessCode);
+                    startSession();
+                } else {
+                    window.location.replace('index.html');
+                }
+            } catch (error) {
+                showStatus('Error initializing encryption', 'error');
+                setTimeout(() => {
+                    window.location.replace('index.html');
+                }, 2000);
+            }
+        }
+
+        // Start the application
+        initialize();
+    </script>
+</body>
+</html> 
